@@ -26,6 +26,7 @@ Common login commands:
 .nf
 teams auth login
 teams auth login --device-code
+teams auth login --token "<access-token>"
 teams auth doctor --output json
 .fi
 .PP
@@ -81,6 +82,27 @@ teams auth login --client-credentials
 Use app-only tokens only for Microsoft Graph operations that support
 application permissions for the intended scenario. Do not use client
 credentials as the normal live chat/channel send model.
+.SH PRE-OBTAINED TOKEN LOGIN
+Log in with an access token you already hold, such as a Bearer token captured
+from an active Teams/Outlook web session:
+.PP
+.nf
+teams auth login --token "<access-token>"
+teams auth login --token -      # read the token from stdin
+pbpaste | teams auth login --token
+.fi
+.PP
+The token is stored in the keyring under the active profile so later commands
+reuse it. Its expiry and scopes are read from the token's JWT claims. A
+browser/session-captured token has no refresh token, so the CLI cannot refresh
+it silently; when it expires, run
+.B teams auth login --token
+again with a fresh token. Login still succeeds if the token's audience is not
+Microsoft Graph, but prints a warning, since Graph commands require a Microsoft
+Graph access token. Unlike
+.B TEAMS_CLI_ACCESS_TOKEN,
+which is used verbatim for a single process and never stored, this persists the
+token to the keyring.
 .SH MESSAGE POSTING
 Normal message mutation commands require delegated auth:
 .PP

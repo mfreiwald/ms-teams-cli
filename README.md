@@ -198,7 +198,17 @@ teams auth login --client-id <client-id> --tenant-id <tenant-id>
 
 # Device code flow with a customer-owned app
 teams auth login --device-code --client-id <client-id> --tenant-id <tenant-id>
+
+# Log in with a pre-obtained token (e.g. captured from an active Teams/Outlook
+# web session). Stored in the keyring like any login; pass `-` to read stdin.
+teams auth login --token "<access-token>"
+pbpaste | teams auth login --token
 ```
+
+A `--token` login has no refresh token, so it cannot be refreshed
+automatically — re-run `teams auth login --token` with a fresh token when it
+expires. If the token's audience is not Microsoft Graph, login still succeeds
+but prints a warning.
 
 Use **client credentials** only for commands backed by Graph application
 permissions, such as supported read/admin automation. Do not use this as the
@@ -321,6 +331,7 @@ esac
 teams auth login             # Interactive login (browser)
 teams auth login --device-code  # Device code flow
 teams auth login --client-credentials  # App-only Graph operations where supported
+teams auth login --token TOKEN  # Log in with a pre-obtained token (reads stdin with `-`)
 teams auth refresh           # Silently redeem the refresh token (picks up newly consented scopes)
 teams auth status            # Check if session is valid (exit code 0/1)
 teams auth consent-url       # Print admin consent URL for the active auth app

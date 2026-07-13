@@ -18,6 +18,19 @@ pub enum AuthCommand {
         #[arg(long)]
         device_code: bool,
 
+        /// Log in with a pre-obtained access token (e.g. a Bearer token
+        /// captured from an active Teams/Outlook web session). Pass the token
+        /// as the value, or use `-`/omit the value to read it from stdin. The
+        /// token is stored as-is and cannot be refreshed automatically.
+        #[arg(
+            long,
+            value_name = "TOKEN",
+            num_args = 0..=1,
+            default_missing_value = "-",
+            conflicts_with_all = ["client_credentials", "device_code"]
+        )]
+        token: Option<String>,
+
         /// Azure AD application (client) ID
         #[arg(long, env = "TEAMS_CLI_CLIENT_ID")]
         client_id: Option<String>,
@@ -175,6 +188,96 @@ fn delegated_admin_consent_url(client_id: &str, tenant_id: &str, delegated_scope
     )
 }
 
+/// Read the access token supplied to `auth login --token`. A value of `-`
+/// (also the default when the flag is passed without a value) reads the token
+/// from stdin, so it never lands in shell history or the process table. Any
+/// surrounding whitespace and an accidental `Bearer ` prefix are stripped.
+fn read_provided_token(arg: &str) -> Result<String> {
+    let raw = if arg == "-" {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf).map_err(|e| {
+            TeamsError::InvalidInput(format!("Failed to read token from stdin: {e}"))
+        })?;
+        buf
+    } else {
+        arg.to_string()
+    };
+
+    let trimmed = raw.trim();
+    let trimmed = trimmed
+        .strip_prefix("Bearer ")
+        .or_else(|| trimmed.strip_prefix("bearer "))
+        .unwrap_or(trimmed)
+        .trim();
+
+    if trimmed.is_empty() {
+        return Err(TeamsError::InvalidInput(
+            "No token provided. Pass it as `--token <TOKEN>` or pipe it via stdin.".into(),
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+/// Build a `TokenInfo` from a raw access token captured outside the CLI (e.g.
+/// from a browser session). The JWT is decoded unverified to recover the
+/// expiry (`exp`) and granted scopes (`scp`); a value that is not a decodable
+/// JWT is rejected as invalid input. No refresh token is available, so the
+/// stored token cannot be silently refreshed once it expires.
+fn provided_token_info(profile: &str, access_token: String) -> Result<auth::token::TokenInfo> {
+    let claims = auth::token::decode_unverified_claims(&access_token).map_err(|e| {
+        TeamsError::InvalidInput(format!(
+            "Provided value is not a valid JWT access token ({e}). Paste the raw Bearer token from your Teams/Outlook session."
+        ))
+    })?;
+
+    let expires_at = claims
+        .exp
+        .and_then(|exp| chrono::DateTime::from_timestamp(exp, 0));
+    let scope = claims
+        .scp
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    Ok(auth::token::TokenInfo {
+        access_token,
+        expires_at,
+        token_type: "Bearer".to_string(),
+        scope,
+        refresh_token: None,
+        profile: profile.to_string(),
+    })
+}
+
+/// Warnings specific to a token supplied via `auth login --token`: it may not
+/// target Microsoft Graph, it may already be expired, and it can never be
+/// auto-refreshed since there is no refresh token to redeem.
+fn provided_token_warnings(
+    token: &auth::token::TokenInfo,
+    claims: Option<&auth::token::TokenClaims>,
+) -> Vec<String> {
+    let mut warnings = token_warnings(claims);
+
+    match token.expires_at {
+        Some(_) if token.is_expired() => warnings.push(
+            "Token is already expired. Capture a fresh token and run `teams auth login --token` again.".into(),
+        ),
+        None => warnings.push(
+            "Token has no 'exp' claim, so its expiry is unknown; commands will keep using it until Graph rejects it.".into(),
+        ),
+        _ => {}
+    }
+
+    warnings.push(
+        "Provided tokens have no refresh token and cannot be refreshed automatically; re-run `teams auth login --token` when it expires.".into(),
+    );
+
+    warnings
+}
+
 pub async fn run(
     cmd: AuthCommand,
     config: &ConfigFile,
@@ -185,12 +288,37 @@ pub async fn run(
         AuthCommand::Login {
             client_credentials,
             device_code,
+            token,
             client_id,
             client_secret,
             tenant_id,
             scopes,
         } => {
             let start = Instant::now();
+
+            if let Some(token_arg) = token {
+                let access_token = read_provided_token(&token_arg)?;
+                let token_info = provided_token_info(profile, access_token)?;
+
+                // Store in keyring so subsequent commands reuse it, just like a
+                // normal login. There is no refresh token, so it will need to be
+                // re-supplied when it expires.
+                auth::keyring::store_token(profile, &token_info)?;
+                auth::keyring::add_profile_to_index(profile)?;
+
+                let claims = token_info.unverified_claims();
+                let msg = serde_json::json!({
+                    "message": "Authenticated successfully with provided token",
+                    "profile": profile,
+                    "expires_at": token_info.expires_at.map(|e| e.to_rfc3339()),
+                    "scope": token_info.scope,
+                    "auto_refresh": false,
+                    "token_diagnostics": token_diagnostics(claims.as_ref()),
+                    "warnings": provided_token_warnings(&token_info, claims.as_ref()),
+                });
+                output::print_success(format, &msg, start);
+                return Ok(());
+            }
 
             let token_response = if client_credentials {
                 let client_id = config::resolve_client_id(client_id.as_deref(), profile, config)
@@ -454,6 +582,89 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+
+    fn jwt_with(payload: serde_json::Value) -> String {
+        format!("header.{}.sig", URL_SAFE_NO_PAD.encode(payload.to_string()))
+    }
+
+    #[test]
+    fn read_provided_token_strips_bearer_prefix_and_whitespace() {
+        assert_eq!(
+            read_provided_token("  Bearer abc.def.ghi  ").unwrap(),
+            "abc.def.ghi"
+        );
+        assert_eq!(read_provided_token("abc.def.ghi").unwrap(), "abc.def.ghi");
+    }
+
+    #[test]
+    fn read_provided_token_rejects_empty() {
+        assert!(matches!(
+            read_provided_token("   "),
+            Err(TeamsError::InvalidInput(_))
+        ));
+        assert!(matches!(
+            read_provided_token(""),
+            Err(TeamsError::InvalidInput(_))
+        ));
+    }
+
+    #[test]
+    fn provided_token_info_extracts_expiry_and_scope() {
+        let token = jwt_with(serde_json::json!({
+            "aud": "https://graph.microsoft.com",
+            "tid": "tenant-1",
+            "scp": "User.Read Chat.ReadWrite",
+            "exp": 4_102_444_800_i64, // 2100-01-01
+        }));
+
+        let info = provided_token_info("work", token.clone()).unwrap();
+
+        assert_eq!(info.access_token, token);
+        assert_eq!(info.profile, "work");
+        assert_eq!(info.token_type, "Bearer");
+        assert!(info.refresh_token.is_none());
+        assert_eq!(info.scope.as_deref(), Some("User.Read Chat.ReadWrite"));
+        assert!(info.expires_at.is_some());
+        assert!(!info.is_expired());
+    }
+
+    #[test]
+    fn provided_token_info_rejects_non_jwt() {
+        let err = provided_token_info("work", "not-a-jwt".into()).unwrap_err();
+        assert!(matches!(err, TeamsError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn provided_token_warnings_flag_expired_and_no_refresh() {
+        let token = jwt_with(serde_json::json!({
+            "aud": "https://graph.microsoft.com",
+            "scp": "User.Read",
+            "exp": 1_000_i64, // long past
+        }));
+        let info = provided_token_info("work", token).unwrap();
+        let claims = info.unverified_claims();
+
+        let warnings = provided_token_warnings(&info, claims.as_ref());
+
+        assert!(warnings.iter().any(|w| w.contains("already expired")));
+        assert!(warnings.iter().any(|w| w.contains("cannot be refreshed")));
+    }
+
+    #[test]
+    fn provided_token_warnings_flag_non_graph_audience() {
+        let token = jwt_with(serde_json::json!({
+            "aud": "https://outlook.office.com",
+            "scp": "User.Read",
+            "exp": 4_102_444_800_i64,
+        }));
+        let info = provided_token_info("work", token).unwrap();
+        let claims = info.unverified_claims();
+
+        let warnings = provided_token_warnings(&info, claims.as_ref());
+
+        assert!(warnings.iter().any(|w| w.contains("not Microsoft Graph")));
+    }
 
     #[test]
     fn annotate_consent_error_adds_guidance_with_requested_scopes() {

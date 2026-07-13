@@ -190,12 +190,38 @@ export TEAMS_CLI_TENANT_ID=<tenant-id>
 teams auth login --client-credentials
 ```
 
-Pre-obtained token:
+Pre-obtained token, ephemeral (never stored, used verbatim for one process):
 
 ```bash
 export TEAMS_CLI_ACCESS_TOKEN=<access-token>
 teams user me --output json
 ```
+
+Pre-obtained token, persisted to the keyring so later commands reuse it:
+
+```bash
+teams auth login --token "<access-token>"
+```
+
+Use this when you already hold a valid Microsoft Graph access token — for
+example a Bearer token captured from an active Teams/Outlook web session — and
+want to authenticate the CLI with it. To keep the token out of your shell
+history, pipe it via stdin instead of passing it as an argument:
+
+```bash
+teams auth login --token -            # reads the token from stdin
+pbpaste | teams auth login --token    # bare --token also reads stdin
+```
+
+The token is stored as-is under the active profile. Its expiry and granted
+scopes are read from the token's JWT claims, so `teams auth status` and
+`teams auth doctor` report them like any other login. Because a
+browser/session-captured token comes without a refresh token, the CLI cannot
+refresh it silently: when it expires, commands return `AUTH_TOKEN_EXPIRED` and
+you must run `teams auth login --token` again with a fresh token. If the
+token's audience is not Microsoft Graph (for example an Outlook/substrate
+token), login still succeeds but prints a warning, since Graph commands
+require a Microsoft Graph access token.
 
 ## BYO customer app
 
