@@ -38,6 +38,15 @@
         <li>Click around a bit so the app calls Graph.</li>
         <li>The token appears here automatically.</li>
       </ol>
+
+      <div id="diag" class="diag" hidden>
+        <p class="diag-title">Token audiences seen so far:</p>
+        <ul id="diag-list"></ul>
+        <p class="diag-note">
+          If none of these is a Graph audience, this session isn't requesting a
+          Graph token — use <code>teams auth login</code> instead.
+        </p>
+      </div>
     </section>
 
     <p id="toast" class="toast" hidden></p>

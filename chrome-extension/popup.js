@@ -2,6 +2,7 @@
 // ready-to-paste `teams auth login --token` command) and clear it.
 
 const STORAGE_KEY = "graphToken";
+const DIAG_KEY = "seenAudiences";
 
 const el = {
   pill: document.getElementById("status-pill"),
@@ -15,6 +16,8 @@ const el = {
   copyCmd: document.getElementById("copy-cmd"),
   clear: document.getElementById("clear"),
   toast: document.getElementById("toast"),
+  diag: document.getElementById("diag"),
+  diagList: document.getElementById("diag-list"),
 };
 
 let current = null;
@@ -40,11 +43,29 @@ function setPill(kind, label) {
   el.pill.textContent = label;
 }
 
+async function renderDiag() {
+  const seen = (await sessionGet(DIAG_KEY)) || [];
+  el.diagList.innerHTML = "";
+  if (!seen.length) {
+    el.diag.hidden = true;
+    return;
+  }
+  for (const entry of seen) {
+    const li = document.createElement("li");
+    li.textContent = entry.aud;
+    li.className = entry.graph ? "aud-graph" : "aud-other";
+    li.title = entry.host || "";
+    el.diagList.appendChild(li);
+  }
+  el.diag.hidden = false;
+}
+
 function render() {
   if (!current) {
     el.have.hidden = true;
     el.none.hidden = false;
     setPill("none", "none");
+    renderDiag();
     return;
   }
 
@@ -125,9 +146,12 @@ el.clear.addEventListener("click", async () => {
 
 // Live-update when a token is captured/cleared while the popup is open.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes[STORAGE_KEY]) {
+  if (area !== "session") return;
+  if (changes[STORAGE_KEY]) {
     current = changes[STORAGE_KEY].newValue || null;
     render();
+  } else if (changes[DIAG_KEY] && !current) {
+    renderDiag();
   }
 });
 

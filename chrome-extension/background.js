@@ -1,6 +1,6 @@
-// Service worker: observe requests to Microsoft Graph, capture the bearer
-// token from the Authorization header, and keep the freshest valid Graph token
-// in session storage for the popup to copy.
+// Service worker: observe requests to Microsoft Graph (direct or MCAS-proxied),
+// capture the bearer token from the Authorization header, and keep the freshest
+// valid Graph token in session storage for the popup to copy.
 //
 // The listener is registered at the top level so it is re-established every
 // time the (ephemeral) service worker restarts.
@@ -8,23 +8,48 @@
 importScripts("jwt.js");
 
 const STORAGE_KEY = "graphToken";
+const DIAG_KEY = "seenAudiences"; // troubleshooting: which token audiences flow
 const { parseJwt, isGraphAudience, audienceString } = globalThis.TeamsJwt;
 
-// The token is deliberately kept in `chrome.storage.session` (in-memory, wiped
-// when the browser closes) rather than `local` (persisted to disk), since a
-// bearer token is a live credential.
 function sessionGet(key) {
   return chrome.storage.session.get(key).then((o) => o[key]);
 }
 
-function toRecord(token) {
+function hostOf(url) {
+  try {
+    return new URL(url).host;
+  } catch (_e) {
+    return url;
+  }
+}
+
+// Record every distinct token audience we observe (Graph or not) so the popup
+// can show what is actually flowing when no Graph token is captured.
+async function recordAudience(aud, host, graph) {
+  const list = (await sessionGet(DIAG_KEY)) || [];
+  if (list.some((e) => e.aud === aud)) return;
+  list.unshift({ aud, host, graph, at: Date.now() });
+  await chrome.storage.session.set({ [DIAG_KEY]: list.slice(0, 12) });
+}
+
+// The token is deliberately kept in `chrome.storage.session` (in-memory, wiped
+// when the browser closes) rather than `local` (persisted to disk), since a
+// bearer token is a live credential.
+async function observeToken(token, url) {
   const claims = parseJwt(token);
-  if (!claims || !isGraphAudience(claims)) return null;
+  if (!claims) return;
+
+  const aud = audienceString(claims.aud) || "unknown";
+  const graph = isGraphAudience(claims);
+  await recordAudience(aud, hostOf(url), graph);
+  if (!graph) return; // only Graph-audience tokens are usable by teams-cli
+
   const expMs = claims.exp ? claims.exp * 1000 : null;
-  if (expMs && Date.now() >= expMs) return null; // ignore already-expired
-  return {
+  if (expMs && Date.now() >= expMs) return; // ignore already-expired
+
+  const record = {
     token,
-    audience: audienceString(claims.aud),
+    audience: aud,
     expiresAt: expMs,
     scopes: claims.scp || null,
     user: claims.preferred_username || claims.upn || null,
@@ -32,11 +57,6 @@ function toRecord(token) {
     appId: claims.appid || claims.azp || null,
     capturedAt: Date.now(),
   };
-}
-
-async function maybeStoreToken(token) {
-  const record = toRecord(token);
-  if (!record) return;
 
   const existing = await sessionGet(STORAGE_KEY);
   // Skip churn if the identical token is already stored; otherwise prefer the
@@ -57,15 +77,17 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     const auth = headers.find((h) => h.name.toLowerCase() === "authorization");
     if (auth && auth.value && auth.value.startsWith("Bearer ")) {
       // Fire and forget: observers must return synchronously.
-      maybeStoreToken(auth.value.slice(7)).catch(() => {});
+      observeToken(auth.value.slice(7), details.url).catch(() => {});
     }
   },
   {
     urls: [
       "https://graph.microsoft.com/*",
-      // MCAS / Defender for Cloud Apps reverse-proxies Graph in some tenants;
-      // the token inside is still a real Graph token (audience unchanged).
-      "https://graph.microsoft.com.mcas.ms/*",
+      // MCAS / Defender for Cloud Apps reverse-proxies Graph in some tenants
+      // under *.mcas.ms (e.g. graph.microsoft.com.mcas.ms). The token inside is
+      // still a real Graph token (audience unchanged); the audience check keeps
+      // only Graph tokens, so a broad *.mcas.ms net is safe.
+      "https://*.mcas.ms/*",
     ],
   },
   ["requestHeaders", "extraHeaders"]

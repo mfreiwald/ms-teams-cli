@@ -63,7 +63,11 @@ This extension grabs exactly that token.
 
 **No token appears.** The extension only sees a token once the browser actually
 requests Microsoft Graph. Open **teams.microsoft.com** *and* **Outlook web**,
-click around (open chats, calendar, people), and give it a few seconds.
+click around (open chats, calendar, people), and give it a few seconds. While no
+Graph token is captured, the popup lists every **token audience it has observed**
+(green = Graph, grey = other) — this tells you whether a Graph token is flowing
+at all, and on which host (hover an entry). If you only see non-Graph audiences,
+this session isn't requesting a Graph token; use `teams auth login` instead.
 
 **Tenant behind MCAS / Defender for Cloud Apps.** Conditional-access app control
 rewrites hosts by appending `.mcas.ms` (e.g. `graph.microsoft.com.mcas.ms`).

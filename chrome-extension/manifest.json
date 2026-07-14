@@ -6,7 +6,7 @@
   "permissions": ["webRequest", "storage", "alarms"],
   "host_permissions": [
     "https://graph.microsoft.com/*",
-    "https://graph.microsoft.com.mcas.ms/*"
+    "https://*.mcas.ms/*"
   ],
   "background": {
     "service_worker": "background.js"
