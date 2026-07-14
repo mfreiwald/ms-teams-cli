@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Teams Graph Token Grabber",
+  "version": "1.0.0",
+  "description": "Captures the Microsoft Graph access token from your active Teams/Office web session so you can authenticate teams-cli with `teams auth login --token`.",
+  "permissions": ["webRequest", "storage", "alarms"],
+  "host_permissions": ["https://graph.microsoft.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Teams Graph Token",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>Teams Graph Token</title>
+  </head>
+  <body>
+    <header>
+      <h1>Teams Graph Token</h1>
+      <span id="status-pill" class="pill pill-none">none</span>
+    </header>
+
+    <!-- Shown when a token is captured -->
+    <section id="have-token" hidden>
+      <dl class="meta">
+        <div><dt>User</dt><dd id="m-user">—</dd></div>
+        <div><dt>Audience</dt><dd id="m-audience">—</dd></div>
+        <div><dt>Expires</dt><dd id="m-expiry">—</dd></div>
+        <div><dt>Scopes</dt><dd id="m-scopes" class="scopes">—</dd></div>
+      </dl>
+
+      <div class="actions">
+        <button id="copy-token" class="primary">Copy token</button>
+        <button id="copy-cmd">Copy <code>login&nbsp;--token</code> command</button>
+        <button id="clear" class="ghost">Clear</button>
+      </div>
+    </section>
+
+    <!-- Shown when nothing has been captured yet -->
+    <section id="no-token">
+      <p class="hint">
+        No Microsoft Graph token captured yet.
+      </p>
+      <ol class="hint">
+        <li>Open <b>teams.microsoft.com</b> (or Outlook web) and sign in.</li>
+        <li>Click around a bit so the app calls Graph.</li>
+        <li>The token appears here automatically.</li>
+      </ol>
+    </section>
+
+    <p id="toast" class="toast" hidden></p>
+
+    <footer>
+      Captured tokens live in memory only and are cleared when Chrome closes.
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
