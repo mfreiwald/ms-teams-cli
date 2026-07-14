@@ -60,7 +60,14 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
       maybeStoreToken(auth.value.slice(7)).catch(() => {});
     }
   },
-  { urls: ["https://graph.microsoft.com/*"] },
+  {
+    urls: [
+      "https://graph.microsoft.com/*",
+      // MCAS / Defender for Cloud Apps reverse-proxies Graph in some tenants;
+      // the token inside is still a real Graph token (audience unchanged).
+      "https://graph.microsoft.com.mcas.ms/*",
+    ],
+  },
   ["requestHeaders", "extraHeaders"]
 );
 

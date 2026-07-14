@@ -10,8 +10,9 @@ This extension grabs exactly that token.
 
 ## What it does
 
-- Observes requests to `https://graph.microsoft.com/*` and reads the
-  `Authorization: Bearer …` header (non-blocking; it never modifies traffic).
+- Observes requests to `https://graph.microsoft.com/*` (and the MCAS-proxied
+  `https://graph.microsoft.com.mcas.ms/*`) and reads the `Authorization:
+  Bearer …` header (non-blocking; it never modifies traffic).
 - Decodes the JWT (unverified) and keeps the **freshest, non-expired Graph
   token** — tokens for other audiences (e.g. the Outlook/substrate token behind
   `outlook.office.com/owa/service.svc`) are ignored, because Graph rejects them.
@@ -57,6 +58,33 @@ This extension grabs exactly that token.
 - The token still expires (typically ~1 hour) and has **no refresh token**, so
   re-capture and re-run `teams auth login --token` when it lapses. For a
   long-lived session, use `teams auth login` / `--device-code` instead.
+
+## Troubleshooting
+
+**No token appears.** The extension only sees a token once the browser actually
+requests Microsoft Graph. Open **teams.microsoft.com** *and* **Outlook web**,
+click around (open chats, calendar, people), and give it a few seconds.
+
+**Tenant behind MCAS / Defender for Cloud Apps.** Conditional-access app control
+rewrites hosts by appending `.mcas.ms` (e.g. `graph.microsoft.com.mcas.ms`).
+Both variants are covered out of the box. If your tenant uses a different suffix
+(you'll see it in the address bar), add it in two places and reload the
+extension:
+
+- `manifest.json` → `host_permissions`
+- `background.js` → the `urls` array of the `onBeforeSendHeaders` listener
+
+The captured token is still a genuine Graph token (MCAS only proxies the
+connection; the token's audience stays `https://graph.microsoft.com`), so
+`teams-cli` uses it against the real Graph endpoint.
+
+**Why not the `outlook.office.com` token?** That token's audience is the
+Outlook/substrate service, which Microsoft Graph rejects with
+`InvalidAuthenticationToken: Invalid audience`. It is the right token for tools
+that call Outlook APIs directly, but not for `teams-cli`, which talks to Graph.
+
+**Still nothing?** Fall back to the OAuth flow, which mints a proper Graph token
+with a refresh token: `teams auth login` or `teams auth login --device-code`.
 
 ## Files
 

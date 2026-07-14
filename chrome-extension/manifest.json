@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Captures the Microsoft Graph access token from your active Teams/Office web session so you can authenticate teams-cli with `teams auth login --token`.",
   "permissions": ["webRequest", "storage", "alarms"],
-  "host_permissions": ["https://graph.microsoft.com/*"],
+  "host_permissions": [
+    "https://graph.microsoft.com/*",
+    "https://graph.microsoft.com.mcas.ms/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
