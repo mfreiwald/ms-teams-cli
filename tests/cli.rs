@@ -97,6 +97,27 @@ fn auth_login_help_documents_scopes_flag_and_env() {
 }
 
 #[test]
+fn auth_login_help_documents_token_flag() {
+    teams()
+        .args(["auth", "login", "--help"])
+        .assert()
+        .success()
+        .stdout(
+            predicate::str::contains("--token")
+                .and(predicate::str::contains("pre-obtained access token")),
+        );
+}
+
+#[test]
+fn auth_login_token_rejects_non_jwt() {
+    teams()
+        .args(["auth", "login", "--token", "not-a-jwt", "--output", "json"])
+        .assert()
+        .code(2)
+        .stdout(predicate::str::contains("valid JWT access token"));
+}
+
+#[test]
 fn auth_help_shows_refresh_subcommand() {
     teams()
         .args(["auth", "--help"])

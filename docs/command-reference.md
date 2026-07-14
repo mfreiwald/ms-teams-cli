@@ -26,6 +26,7 @@ teams [OPTIONS] <COMMAND>
 ```bash
 teams auth login [--device-code] [--client-id ID] [--tenant-id ID] [--scopes SCOPES]
 teams auth login --client-credentials --client-id ID --client-secret SECRET --tenant-id ID
+teams auth login --token TOKEN          # or: --token - / --token (reads stdin)
 teams auth refresh [--scopes SCOPES]
 teams auth status
 teams auth consent-url [--client-id ID] [--tenant-id ID] [--scopes SCOPES]
@@ -37,6 +38,8 @@ teams auth token [--format bearer|json]
 ```
 
 Delegated login defaults to the OSO public client app. Client credentials always require explicit customer credentials.
+
+`auth login --token` stores a pre-obtained access token (e.g. a Bearer token captured from an active Teams/Outlook web session) directly in the keyring so subsequent commands reuse it. Pass the token as the argument, or use `--token -` (or bare `--token`) to read it from stdin and keep it out of shell history. The token's expiry and scopes are read from its JWT claims; because there is no refresh token, it cannot be refreshed automatically and must be re-supplied when it expires. A warning is emitted if the token's audience is not Microsoft Graph.
 
 Delegated scopes resolve as `--scopes` (or `TEAMS_CLI_SCOPES`), then the profile's `scopes` config field, then the built-in default scope set. `offline_access` is always ensured. `consent-url` and `doctor` reflect the resolved profile scopes.
 
