@@ -6,6 +6,12 @@
   "permissions": ["webRequest", "storage", "alarms"],
   "host_permissions": [
     "https://graph.microsoft.com/*",
+    "https://*.microsoft.com/*",
+    "https://*.cloud.microsoft/*",
+    "https://*.office.com/*",
+    "https://*.office365.com/*",
+    "https://*.live.com/*",
+    "https://*.skype.com/*",
     "https://*.mcas.ms/*"
   ],
   "background": {

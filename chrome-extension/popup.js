@@ -18,6 +18,7 @@ const el = {
   toast: document.getElementById("toast"),
   diag: document.getElementById("diag"),
   diagList: document.getElementById("diag-list"),
+  diagCount: document.getElementById("diag-count"),
 };
 
 let current = null;
@@ -44,20 +45,23 @@ function setPill(kind, label) {
 }
 
 async function renderDiag() {
-  const seen = (await sessionGet(DIAG_KEY)) || [];
+  const diag = (await sessionGet(DIAG_KEY)) || { count: 0, audiences: [] };
+  el.diagCount.textContent = diag.count || 0;
   el.diagList.innerHTML = "";
-  if (!seen.length) {
-    el.diag.hidden = true;
+  const audiences = diag.audiences || [];
+  if (!audiences.length) {
+    const li = document.createElement("li");
+    li.textContent = "(no bearer tokens observed yet)";
+    li.className = "aud-other";
+    el.diagList.appendChild(li);
     return;
   }
-  for (const entry of seen) {
+  for (const entry of audiences) {
     const li = document.createElement("li");
-    li.textContent = entry.aud;
+    li.textContent = `${entry.aud}  ·  ${entry.host || ""}`;
     li.className = entry.graph ? "aud-graph" : "aud-other";
-    li.title = entry.host || "";
     el.diagList.appendChild(li);
   }
-  el.diag.hidden = false;
 }
 
 function render() {

@@ -186,3 +186,7 @@ footer {
   color: var(--muted);
   font-size: 11px;
 }
+.build {
+  float: right;
+  opacity: 0.6;
+}

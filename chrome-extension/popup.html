@@ -39,12 +39,16 @@
         <li>The token appears here automatically.</li>
       </ol>
 
-      <div id="diag" class="diag" hidden>
-        <p class="diag-title">Token audiences seen so far:</p>
+      <div id="diag" class="diag">
+        <p class="diag-title">
+          Debug — Bearer requests seen: <b id="diag-count">0</b>
+        </p>
         <ul id="diag-list"></ul>
         <p class="diag-note">
-          If none of these is a Graph audience, this session isn't requesting a
-          Graph token — use <code>teams auth login</code> instead.
+          Green = Graph token. If the count stays <b>0</b> after refreshing
+          Teams, the token flows over a host we don't watch yet — tell me the
+          audiences shown here. If you only see non-Graph audiences, use
+          <code>teams auth login</code> instead.
         </p>
       </div>
     </section>
@@ -53,6 +57,7 @@
 
     <footer>
       Captured tokens live in memory only and are cleared when Chrome closes.
+      <span class="build">build: mcas-diag3</span>
     </footer>
 
     <script src="popup.js"></script>

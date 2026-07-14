@@ -23,13 +23,19 @@ function hostOf(url) {
   }
 }
 
-// Record every distinct token audience we observe (Graph or not) so the popup
-// can show what is actually flowing when no Graph token is captured.
-async function recordAudience(aud, host, graph) {
-  const list = (await sessionGet(DIAG_KEY)) || [];
-  if (list.some((e) => e.aud === aud)) return;
-  list.unshift({ aud, host, graph, at: Date.now() });
-  await chrome.storage.session.set({ [DIAG_KEY]: list.slice(0, 12) });
+// Record observation stats so the popup can show what is actually flowing when
+// no Graph token is captured: a running count of Bearer requests seen, plus the
+// distinct token audiences (Graph or not) and the host each was seen on. The
+// count is best-effort (concurrent observers may race) but a non-zero value is
+// the signal that the listener is working at all.
+async function recordObservation(aud, host, graph) {
+  const diag = (await sessionGet(DIAG_KEY)) || { count: 0, audiences: [] };
+  diag.count = (diag.count || 0) + 1;
+  if (!diag.audiences.some((e) => e.aud === aud)) {
+    diag.audiences.unshift({ aud, host, graph, at: Date.now() });
+    diag.audiences = diag.audiences.slice(0, 12);
+  }
+  await chrome.storage.session.set({ [DIAG_KEY]: diag });
 }
 
 // The token is deliberately kept in `chrome.storage.session` (in-memory, wiped
@@ -41,7 +47,7 @@ async function observeToken(token, url) {
 
   const aud = audienceString(claims.aud) || "unknown";
   const graph = isGraphAudience(claims);
-  await recordAudience(aud, hostOf(url), graph);
+  await recordObservation(aud, hostOf(url), graph);
   if (!graph) return; // only Graph-audience tokens are usable by teams-cli
 
   const expMs = claims.exp ? claims.exp * 1000 : null;
@@ -81,12 +87,19 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
     }
   },
   {
+    // Broad Microsoft-365 net so we catch the Graph token wherever the browser
+    // sends it — directly, via MCAS/Defender for Cloud Apps (*.mcas.ms), or
+    // from the new Teams client (*.cloud.microsoft). The audience check keeps
+    // only genuine Graph tokens; everything else is recorded for diagnostics
+    // only. Must stay in sync with manifest host_permissions.
     urls: [
       "https://graph.microsoft.com/*",
-      // MCAS / Defender for Cloud Apps reverse-proxies Graph in some tenants
-      // under *.mcas.ms (e.g. graph.microsoft.com.mcas.ms). The token inside is
-      // still a real Graph token (audience unchanged); the audience check keeps
-      // only Graph tokens, so a broad *.mcas.ms net is safe.
+      "https://*.microsoft.com/*",
+      "https://*.cloud.microsoft/*",
+      "https://*.office.com/*",
+      "https://*.office365.com/*",
+      "https://*.live.com/*",
+      "https://*.skype.com/*",
       "https://*.mcas.ms/*",
     ],
   },
